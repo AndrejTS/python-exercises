@@ -25,95 +25,72 @@ class SgfTree:
         return not self == other
 
 
-NODE = ';'
-TREE_START = '('
-TREE_END = ')'
-VALUE_START = '['
-VALUE_END = ']'
-
-
 def parse(string):
-    if string[0:2] != "(;" or string[-1] != ")":
-        raise ValueError("Input String Invalid")
-    # current string index
-    global index
-    index = 0
-    return parse_tree(string)
+    root = None
+    stack = list(string)
 
+    if not stack:
+        raise ValueError('.')
 
-def parse_tree(string):
-    global index
-    root = cur_node = None
-    
-    while string[index] != TREE_END:
-        if string[index] == TREE_START:
-            index += 1
-            if root is None:
-                index += 1
-                properties = parse_node(string)
-                node = SgfTree(properties)
-                root = cur_node = node
-            else:
-                cur_node.children.append(parse_tree(string))
-        else:
-            index += 1
-            properties = parse_node(string)
+    if ''.join(stack[0:2]) != '(;' or stack[-1] != ')':
+        raise ValueError('.')
+
+    stack.pop(0)
+
+    def pop_until(char):
+        result = ''
+        while stack[0] != char:
+            result += stack.pop(0)
+            if result[-1] == char:
+                return result
+            if result[-1] == '\\':
+                result = result[:-1] + stack.pop(0)
+            if not stack:
+                raise ValueError('.')
+        return result
+
+    def get_properties():
+        properties = {}
+        while stack[0].isupper():
+            key = pop_until('[')
+            if not key.isupper():
+                raise ValueError('.')
+            values = []
+            while stack[0] == '[':
+                stack.pop(0)
+                value = pop_until(']')
+                stack.pop(0)
+                value = value.replace("\t", " ")
+                values.append(value)
+            properties[key] = values
+        return properties
+
+    def get_nested_tree():
+        nested_tree = ''
+        while True:
+            nested_tree += pop_until(')')
+            nested_tree += stack.pop(0)
+            if nested_tree.count('(') == nested_tree.count(')'):
+                break
+        return nested_tree
+
+    while stack:
+        if stack[0] != ';':
+            raise ValueError('.')
+        while stack.pop(0) == ';':
+            properties = get_properties()
             node = SgfTree(properties)
             if root is None:
                 root = node
+                current_node = root
             else:
-                cur_node.children.append(node)
-            cur_node = node
+                current_node.children.append(node)
+                current_node = node
+            while stack[0] == '(':
+                nested_tree = get_nested_tree()
+                current_node.children.append(parse(nested_tree))
 
-    index += 1
     return root
-
-
-def parse_node(string):
-    properties = {}
-
-    while string[index] not in [NODE, TREE_START, TREE_END]: 
-        try:
-            key, values = parse_property(string)
-        except IndexError:
-            raise ValueError("Invalid property")
-        properties[key] = values
-
-    return properties
-
-
-def parse_property(string):
-    global index
-    key = ""
-    values = []
-
-    while string[index] != VALUE_START:
-        key += string[index]
-        index += 1
-
-    if not key.isupper():
-        raise ValueError(f"Invalid key: {key!r}")
-
-    while string[index] == VALUE_START:
-        value = parse_value(string)
-        values.append(value)
-
-    return key, values
-
-
-def parse_value(string):
-    global index
-    index += 1
-    value = ''
-
-    while string[index] != VALUE_END or value.endswith("\\"):
-        value += string[index]
-        index += 1
-
-    index += 1
-    value = value.replace("\\]", "]").replace("\t", " ")
-    return value
-
 
 
 # test = parse("(;A[B];B[C];C[D];D[E])")
@@ -124,11 +101,11 @@ def parse_value(string):
 # print(test.children[0].children[0].children[0].children)
 
 
-# test = parse("(;A[B](;B[C][ttt](;P[Z])(;D[Z]E[U];K[L][aaa]))(;C[D]);X[T];Y[U])")
+# test = parse(
+#     "(;A[B](;B[C][ttt](;P[Z])(;D[Z]E[U];K[L][aaa]))(;C[D]);X[T];Y[U])")
 # print(test.properties)
 # print(test.children[0].children[1].properties)
 # print(test.children[0].children[1].children[0].properties)
 # print(test.children[1].properties)
 # print(test.children[2].properties)
 # print(test.children[2].children[0].properties)
-
