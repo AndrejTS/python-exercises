@@ -25,60 +25,71 @@ class SgfTree:
         return not self == other
 
 
-def parse(string):
-    root = None
-    stack = list(string)
+class Parser:
+    def __init__(self, string):
+        self.stack = list(string)
 
-    if not stack:
-        raise ValueError('.')
-
-    if ''.join(stack[0:2]) != '(;' or stack[-1] != ')':
-        raise ValueError('.')
-
-    stack.pop(0)
-
-    def pop_until(char):
+    def pop_until(self, char):
+        # e.g. stack = FF[4];B[aa]
+        # pop_until('[')
+        # result -> FF, stack -> [4];B[aa]
         result = ''
-        while stack[0] != char:
-            result += stack.pop(0)
-            if result[-1] == char:
-                return result
+        while self.stack[0] != char:
+            result += self.stack.pop(0)
             if result[-1] == '\\':
-                result = result[:-1] + stack.pop(0)
-            if not stack:
-                raise ValueError('.')
+                result = result[:-1] + self.stack.pop(0)
+            if not self.stack:
+                raise ValueError('Syntax error')
         return result
 
-    def get_properties():
+    def get_properties(self):
         properties = {}
-        while stack[0].isupper():
-            key = pop_until('[')
+        while self.stack:
+            # if next char indicate new node or nested tree => break
+            if self.stack[0] in '(;':
+                break
+            key = self.pop_until('[')
             if not key.isupper():
-                raise ValueError('.')
+                raise ValueError('Syntax error')
             values = []
-            while stack[0] == '[':
-                stack.pop(0)
-                value = pop_until(']')
-                stack.pop(0)
+            while self.stack:
+                # if no more values => break
+                if self.stack[0] != '[':
+                    break
+                self.stack.pop(0)
+                value = self.pop_until(']')
+                self.stack.pop(0)
                 value = value.replace("\t", " ")
                 values.append(value)
             properties[key] = values
         return properties
 
-    def get_nested_tree():
+    def get_nested_tree(self):
+        # (;A[1];B[2])(;C[3];D[4]) => (;A[1];B[2])
+        # (;A[1](;B[2]))(C[3]) => (;A[1](;B[2]))
         nested_tree = ''
-        while True:
-            nested_tree += pop_until(')')
-            nested_tree += stack.pop(0)
+        while self.stack:
+            nested_tree += self.pop_until(')')
+            nested_tree += self.stack.pop(0)
             if nested_tree.count('(') == nested_tree.count(')'):
                 break
         return nested_tree
 
-    while stack:
-        if stack[0] != ';':
-            raise ValueError('.')
-        while stack.pop(0) == ';':
-            properties = get_properties()
+    def parse(self):
+        root = None
+
+        if not self.stack:
+            raise ValueError('Empty string')
+
+        if self.stack.pop(0) != '(' or self.stack.pop() != ')':
+            raise ValueError('Syntax error')
+
+        # parse nodes and possible nested trees
+        while self.stack:
+            # node must start with ';
+            if self.stack.pop(0) != ';':
+                break
+            properties = self.get_properties()
             node = SgfTree(properties)
             if root is None:
                 root = node
@@ -86,26 +97,20 @@ def parse(string):
             else:
                 current_node.children.append(node)
                 current_node = node
-            while stack[0] == '(':
-                nested_tree = get_nested_tree()
-                current_node.children.append(parse(nested_tree))
+            # check for nested trees
+            while self.stack:
+                if self.stack[0] != '(':
+                    break
+                nested_tree = self.get_nested_tree()
+                parsed_nested_tree = Parser(nested_tree).parse()
+                current_node.children.append(parsed_nested_tree)
 
-    return root
+        # at the end, stack must be empty and root must not be None
+        if self.stack or (root == None):
+            raise ValueError('Syntax error')
+
+        return root
 
 
-# test = parse("(;A[B];B[C];C[D];D[E])")
-# print(test.properties)
-# print(test.children[0].properties)
-# print(test.children[0].children[0].properties)
-# print(test.children[0].children[0].children[0].properties)
-# print(test.children[0].children[0].children[0].children)
-
-
-# test = parse(
-#     "(;A[B](;B[C][ttt](;P[Z])(;D[Z]E[U];K[L][aaa]))(;C[D]);X[T];Y[U])")
-# print(test.properties)
-# print(test.children[0].children[1].properties)
-# print(test.children[0].children[1].children[0].properties)
-# print(test.children[1].properties)
-# print(test.children[2].properties)
-# print(test.children[2].children[0].properties)
+def parse(string):
+    return Parser(string).parse()
